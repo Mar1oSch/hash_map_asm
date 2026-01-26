@@ -3,14 +3,14 @@
 global main
 
 section .data
-    key1 db "Key1", 0
+    key1 db "KeyKey1", 0
     key2 db "Key2", 0
 
     value1 db "Value1", 0
     value2 db "Value2", 0
 
 section .text
-    extern hash_map_static_vtable, HASH_MAP_CONSTRUCTOR_OFFSET, HASH_MAP_ADD_ENTRY_OFFSET, HASH_MAP_SHOW_BUCKETS_OFFSET
+    extern hash_map_static_vtable, HASH_MAP_CONSTRUCTOR_OFFSET, HASH_MAP_ADD_ENTRY_OFFSET, HASH_MAP_SHOW_BUCKETS_OFFSET, HASH_MAP_SHOW_ENTRIES_OFFSET
 
 main:
     push rbp
@@ -38,6 +38,10 @@ main:
     mov rcx, [rbp - 8]
     mov r9, [rcx + Hash_Map.public_methods_vtable_ptr]
     call [r9 + HASH_MAP_SHOW_BUCKETS_OFFSET]
+
+    mov rcx, [rbp - 8]
+    mov r9, [rcx + Hash_Map.public_methods_vtable_ptr]
+    call [r9 + HASH_MAP_SHOW_ENTRIES_OFFSET]
 
     xor rax, rax
 

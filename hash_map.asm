@@ -1,14 +1,17 @@
 %include ".\strucs.inc"
 
-global HASH_MAP_ADD_ENTRY_OFFSET, HASH_MAP_SHOW_BUCKETS_OFFSET, hash_map_static_vtable, HASH_MAP_CONSTRUCTOR_OFFSET, Hash_Map
+global HASH_MAP_ADD_ENTRY_OFFSET, HASH_MAP_SHOW_BUCKETS_OFFSET, HASH_MAP_SHOW_ENTRIES_OFFSET, hash_map_static_vtable, HASH_MAP_CONSTRUCTOR_OFFSET
 
 HASH_MAP_ADD_ENTRY_OFFSET equ 0
 HASH_MAP_SHOW_BUCKETS_OFFSET equ 8
+HASH_MAP_SHOW_ENTRIES_OFFSET equ 16
+
 HASH_MAP_CONSTRUCTOR_OFFSET equ 0
 
 section .rodata
     pointer_format db "%p", 13, 10, 0
     hash_format db "%llu", 13, 10, 0
+    entry_format db "{%s : %s}", 13, 10, 0
 
 section .text
     extern calloc, malloc, free
@@ -20,6 +23,7 @@ hash_map_static_vtable:
 hash_map_public_methods_vtable:
     dq hash_map_add_entry
     dq hash_map_show_buckets
+    dq hash_map_show_entries
 
 ;;;;;; PUBLIC METHODS ;;;;;;
 hash_map_new:
@@ -153,40 +157,115 @@ hash_map_add_entry:
         ret
 
 hash_map_show_buckets:
-; * Expect pointer to Map in RCX.
-    push rbp
-    mov rbp, rsp
-    sub rsp, 32
+    ; * Expect pointer to Map in RCX.
+    .set_up:
+        ; Set up stack frame.
+        ; * 24 bytes local variables.
+        ; * 8 bytes to keep stack 16-byte aligned.
+        push rbp
+        mov rbp, rsp
+        sub rsp, 32
 
-    sub rsp, 32
+        ; Reserve 32 bytes shadow space for called functions.
+        sub rsp, 32
 
-    mov [rbp - 8], rbx
-    mov [rbp - 16], r12
-    mov [rbp - 24], r13
+        ; Save non-volatile regs.
+        mov [rbp - 8], rbx
+        mov [rbp - 16], r12
+        mov [rbp - 24], r13
 
-    mov rbx, rcx
-    mov r12, [rbx + Hash_Map.length]
-    dec r12
-    mov r13, [rbx + Hash_Map.bucket_list_ptr]
+        ; Make RBX point to the Map.
+        mov rbx, rcx
 
-    .loop:
-        lea rcx, [rel pointer_format]
-        mov rdx, [r13 + r12 * 8]
-        call printf
-    .loop_handle:
-        test r12, r12
-        jz .complete
+        ; R12 is the counter.
+        mov r12, [rbx + Hash_Map.length]
         dec r12
-        jmp .loop
 
-.complete:
-    mov r13, [rbp - 24]
-    mov r12, [rbp - 16]
-    mov rbx, [rbp - 8]
+        ; R13 points to the bucket list of the Map.
+        mov r13, [rbx + Hash_Map.bucket_list_ptr]
 
-    mov rsp, rbp
-    pop rbp
-    ret
+        ; Printing all pointers.
+        .loop:
+            lea rcx, [rel pointer_format]
+            mov rdx, [r13 + r12 * 8]
+            call printf
+        .loop_handle:
+            test r12, r12
+            jz .complete
+            dec r12
+            jmp .loop
+
+    .complete:
+        ; Restore non-volatile regs.
+        mov r13, [rbp - 24]
+        mov r12, [rbp - 16]
+        mov rbx, [rbp - 8]
+
+        ; Restore old stack frame and return to caller.
+        mov rsp, rbp
+        pop rbp
+        ret
+
+hash_map_show_entries:
+    ; * Expect pointer to Map in RCX.
+    .set_up:
+        ; Set up stack frame.
+        ; * 32 bytes local variables.
+        push rbp
+        mov rbp, rsp
+        sub rsp, 32
+
+        ; Reserve 32 bytes shadow space for called functions.
+        sub rsp, 32
+
+        ; Save non-volatile regs.
+        mov [rbp - 8], rbx
+        mov [rbp - 16], r12
+        mov [rbp - 24], r13
+        mov [rbp - 32], r14
+
+        ; Make RBX point to the Map.
+        mov rbx, rcx
+
+        ; R12 is the counter for the buckets.
+        mov r12, [rbx + Hash_Map.length]
+        dec r12
+
+        ; RBX points to the bucket list of the Map.
+        mov rbx, [rbx + Hash_Map.bucket_list_ptr]
+
+        .loop:
+            mov r14, [rbx + r12 * 8]
+            cmp r14, 0
+            jne .loop_through_entries
+        .loop_handle:
+            test r12, r12
+            jz .complete
+            dec r12
+            jmp .loop
+
+        .loop_through_entries:
+            lea rcx, [rel entry_format]
+            mov rdx, [r14 + Map_Entry.key]
+            mov r8, [r14 + Map_Entry.value]
+            call printf
+        .loop_through_entries_handle:
+            mov r14, [r14 + Map_Entry.next_entry_ptr]
+            test r14, r14
+            je .loop_handle
+            jmp .loop_through_entries
+
+    .complete:
+        ; Restore non-volatile regs.
+        mov r14, [rbp - 32]
+        mov r13, [rbp - 24]
+        mov r12, [rbp - 16]
+        mov rbx, [rbp - 8]
+
+        ; Restore old stack frame and return to caller.
+        mov rsp, rbp
+        pop rbp
+        ret
 
 ; Hash key with djb2 (Dan Bernstein) algorithm.
 _hash:
