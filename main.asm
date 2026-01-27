@@ -3,14 +3,15 @@
 global main
 
 section .data
-    key1 db "KeyKey1", 0
+    key1 db "Key1", 0
     key2 db "Key2", 0
 
     value1 db "Value1", 0
     value2 db "Value2", 0
+    value1_2 db "Value1.2", 0
 
 section .text
-    extern hash_map_static_vtable, HASH_MAP_CONSTRUCTOR_OFFSET, HASH_MAP_ADD_ENTRY_OFFSET, HASH_MAP_SHOW_BUCKETS_OFFSET, HASH_MAP_SHOW_ENTRIES_OFFSET
+    extern hash_map_static_vtable, HASH_MAP_CONSTRUCTOR_OFFSET, HASH_MAP_ADD_ENTRY_OFFSET, HASH_MAP_SHOW_BUCKETS_OFFSET, HASH_MAP_SHOW_ENTRIES_OFFSET, HASH_MAP_CONTAINS_KEY_OFFSET
 
 main:
     push rbp
@@ -43,7 +44,25 @@ main:
     mov r9, [rcx + Hash_Map.public_methods_vtable_ptr]
     call [r9 + HASH_MAP_SHOW_ENTRIES_OFFSET]
 
-    xor rax, rax
+    mov rcx, [rbp - 8]
+    lea rdx, [rel key1]
+    mov r9, [rcx + Hash_Map.public_methods_vtable_ptr]
+    call [r9 + HASH_MAP_CONTAINS_KEY_OFFSET]
+
+    mov rcx, [rbp - 8]
+    lea rdx, [rel key1]
+    lea r8, [rel value1_2]
+    mov r9, [rcx + Hash_Map.public_methods_vtable_ptr]
+    call [r9 + HASH_MAP_ADD_ENTRY_OFFSET]
+
+    mov rcx, [rbp - 8]
+    mov r9, [rcx + Hash_Map.public_methods_vtable_ptr]
+    call [r9 + HASH_MAP_SHOW_ENTRIES_OFFSET]
+
+    mov rcx, [rbp - 8]
+    lea rdx, [rel key1]
+    mov r9, [rcx + Hash_Map.public_methods_vtable_ptr]
+    call [r9 + HASH_MAP_CONTAINS_KEY_OFFSET]
 
     mov rsp, rbp
     pop rbp
