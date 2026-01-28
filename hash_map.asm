@@ -53,11 +53,11 @@ hash_map_new:
     .set_up_attributes:
         lea rcx, [rel hash_map_public_methods_vtable]
         mov [rbx + Hash_Map.public_methods_vtable_ptr], rcx
-        mov qword [rbx + Hash_Map.bucket_list_length], HASH_MAP_INITIAL_BUCKET_LIST_LENGTH
+        mov qword [rbx + Hash_Map.capacity], HASH_MAP_INITIAL_BUCKET_LIST_LENGTH
         mov qword [rbx + Hash_Map.entries_count], 0
     
     .reserve_memory_space:
-        mov rcx, [rbx + Hash_Map.bucket_list_length]
+        mov rcx, [rbx + Hash_Map.capacity]
         mov rdx, 8
         call calloc
 
@@ -119,7 +119,7 @@ hash_map_add_entry:
         jz .get_memory_space_for_entry
         mov rcx, [rbp + 32]
         mov [rax + Map_Entry.value], rcx
-        jmp .resize
+        jmp .complete
 
     .get_memory_space_for_entry:
         mov rcx, Map_Entry_size
@@ -145,7 +145,7 @@ hash_map_add_entry:
 
     .get_index:
         mov rcx, [rbp + 16]
-        mov rcx, [rcx + Hash_Map.bucket_list_length]
+        mov rcx, [rcx + Hash_Map.capacity]
         mov rdx, rax
         call _get_index
 
@@ -175,7 +175,7 @@ hash_map_add_entry:
         jz .complete
 
         mov rcx, [rbp + 16]
-        call _resize_hash_map
+        call _rehash
 
     .complete:
         ; Restore old stack frame and return to caller.
@@ -205,7 +205,7 @@ hash_map_show_buckets:
         mov rbx, rcx
 
         ; R12 is the counter.
-        mov r12, [rbx + Hash_Map.bucket_list_length]
+        mov r12, [rbx + Hash_Map.capacity]
         dec r12
 
         ; R13 points to the bucket list of the Map.
@@ -255,7 +255,7 @@ hash_map_show_entries:
         mov rbx, rcx
 
         ; R12 is the counter for the buckets.
-        mov r12, [rbx + Hash_Map.bucket_list_length]
+        mov r12, [rbx + Hash_Map.capacity]
         dec r12
 
         ; RBX points to the bucket list of the Map.
@@ -327,7 +327,7 @@ hash_map_contains_key:
 
     .get_index:
         mov rcx, [rbp + 16]
-        mov rcx, [rcx + Hash_Map.bucket_list_length]
+        mov rcx, [rcx + Hash_Map.capacity]
         mov rdx, rax
         call _get_index
 
@@ -482,7 +482,7 @@ _get_entry_by_key:
 
     .get_index:
         mov rcx, [rbp + 16]
-        mov rcx, [rcx + Hash_Map.bucket_list_length]
+        mov rcx, [rcx + Hash_Map.capacity]
         mov rdx, rax
         call _get_index
 
@@ -537,7 +537,7 @@ _get_entry_by_key:
         pop rbp
         ret
 
-_resize_hash_map:
+_rehash:
     ; * Expect pointer to Map in RCX.
     .set_up:
         ; Set up stack frame.
@@ -564,7 +564,7 @@ _resize_hash_map:
         mov rbx, [rcx + Hash_Map.bucket_list_ptr]
 
         ; R12 will be the length of the old bucket list.
-        mov r12, [rcx + Hash_Map.bucket_list_length]
+        mov r12, [rcx + Hash_Map.capacity]
 
         ; R13 will be the length of the new bucket list.
         mov r13, r12
@@ -614,7 +614,7 @@ _resize_hash_map:
 
     .update_map:
         mov rcx, [rbp + 16]
-        mov [rcx + Hash_Map.bucket_list_length], r13
+        mov [rcx + Hash_Map.capacity], r13
         mov [rcx + Hash_Map.bucket_list_ptr], r14
 
     .release_old_bucket_list:
@@ -637,8 +637,7 @@ _resize_hash_map:
 
 _check_load_factor:
     ; * Expect pointer to Map in RCX.
-    mov rdx, [rcx + Hash_Map.bucket_list_length]
-    dec rdx
+    mov rdx, [rcx + Hash_Map.capacity]
     imul rdx, 3
 
     mov rax, [rcx + Hash_Map.entries_count]

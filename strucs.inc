@@ -8,6 +8,6 @@ endstruc
 struc Hash_Map
     .public_methods_vtable_ptr resq 1
     .entries_count resq 1
-    .bucket_list_length resq 1
+    .capacity resq 1
     .bucket_list_ptr resq 1
 endstruc
