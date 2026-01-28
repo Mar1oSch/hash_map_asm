@@ -584,25 +584,25 @@ _resize_hash_map:
         cmp qword [rbx + r12 * 8], 0
         je .resize_loop_handle
 
+        mov r15, [rbx + r12 * 8]
         .update_entries_loop:
-            mov r15, [rbx + r12 * 8]
             mov rcx, r13
             mov rdx, [r15 + Map_Entry.hash]
             call _get_index
 
             .update_entries_pointer:
-                mov rcx, [r14 + rax * 8]
-                test rcx, rcx
-                jnz .update_entry_next_ptr
-                mov [r14 + rax * 8], r15
-                jmp .update_entries_loop_handle
+                ; Save old next_entry_pointer.
+                mov rdx, [r15 + Map_Entry.next_entry_ptr]
 
-                .update_entry_next_ptr:
-                    mov [r14 + rax * 8], r15
-                    mov [rcx + Map_Entry.next_entry_ptr], r15
+                ; If Head of list is 0 or not: Move it to next_entry_pointer in active Map_Entry.
+                mov rcx, [r14 + rax * 8]
+                mov [r15 + Map_Entry.next_entry_ptr], rcx
+
+                ; Update head of list.
+                mov [r14 + rax * 8], r15
 
         .update_entries_loop_handle:
-            mov r15, [r15 + Map_Entry.next_entry_ptr]
+            mov r15, rdx
             test r15, r15
             jnz .update_entries_loop
 
