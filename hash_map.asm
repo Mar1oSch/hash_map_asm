@@ -1,11 +1,12 @@
 %include ".\strucs.inc"
 
-global HASH_MAP_ADD_ENTRY_OFFSET, HASH_MAP_SHOW_BUCKETS_OFFSET, HASH_MAP_SHOW_ENTRIES_OFFSET, HASH_MAP_CONTAINS_KEY_OFFSET, hash_map_static_vtable, HASH_MAP_CONSTRUCTOR_OFFSET
+global HASH_MAP_ADD_ENTRY_OFFSET, HASH_MAP_REMOVE_ENTRY_OFFSET, HASH_MAP_SHOW_BUCKETS_OFFSET, HASH_MAP_SHOW_ENTRIES_OFFSET, HASH_MAP_CONTAINS_KEY_OFFSET, hash_map_static_vtable, HASH_MAP_CONSTRUCTOR_OFFSET
 
 HASH_MAP_ADD_ENTRY_OFFSET equ 0
-HASH_MAP_SHOW_BUCKETS_OFFSET equ 8
-HASH_MAP_SHOW_ENTRIES_OFFSET equ 16
-HASH_MAP_CONTAINS_KEY_OFFSET equ 24
+HASH_MAP_REMOVE_ENTRY_OFFSET equ 8
+HASH_MAP_SHOW_BUCKETS_OFFSET equ 16
+HASH_MAP_SHOW_ENTRIES_OFFSET equ 24
+HASH_MAP_CONTAINS_KEY_OFFSET equ 32
 
 HASH_MAP_CONSTRUCTOR_OFFSET equ 0
 
@@ -25,6 +26,7 @@ hash_map_static_vtable:
 
 hash_map_public_methods_vtable:
     dq hash_map_add_entry
+    dq hash_map_remove_entry
     dq hash_map_show_buckets
     dq hash_map_show_entries
     dq hash_map_contains_key
@@ -183,6 +185,89 @@ hash_map_add_entry:
         pop rbp
         ret
 
+hash_map_remove_entry:
+    ; * Expect pointer to map in RCX.
+    ; * Expect pointer to key in RDX.
+    .set_up:
+        ; Set up stack frame.
+        ; * 40 bytes local variables.
+        push rbp
+        mov rbp, rsp
+        sub rsp, 48
+
+        ; Save non-volatile regs.
+        mov [rbp - 8], rbx
+        mov [rbp - 16], r12
+        mov [rbp - 24], r13
+        mov [rbp - 32], r14
+        mov [rbp - 40], r15
+
+        ; Save params into non-volatile regs.
+        mov rbx, rcx
+        mov r12, rdx
+
+        ; Reserve 32 bytes shadow space for called functions.
+        sub rsp, 32
+
+    .hash_key:
+        mov rcx, rdx
+        call _hash
+        mov r14, rax
+
+    .get_index:
+        mov rcx, [rbx + Hash_Map.capacity]
+        mov rdx, rax
+        call _get_index
+
+    .set_up_search_loop:
+        mov r13, [rbx + Hash_Map.bucket_list_ptr]
+        lea r13, [r13 + 8 * rax]
+
+    .search_loop:
+        mov r15, [r13]
+        test r15, r15
+        jz .not_found
+
+        cmp [r15 + Map_Entry.hash], r14
+        jne .search_loop_handle
+
+        mov rcx, [r15 + Map_Entry.key]
+        mov rdx, r12
+        call _compare_keys
+        test rax, rax
+        jz .search_loop_handle
+
+    .remove_entry:
+        mov rax, [r15 + Map_Entry.next_entry_ptr]
+        mov [r13], rax
+
+        mov rcx, r15
+        call free
+
+        mov rax, 1
+        jmp .complete
+
+    .search_loop_handle:
+        lea r13, [r15 + Map_Entry.next_entry_ptr]
+        jmp .search_loop
+
+    .not_found:
+        xor rax, rax
+
+    .complete:
+        ; Restore non-volatile regs.
+        mov r15, [rbp - 40]
+        mov r14, [rbp - 32]
+        mov r13, [rbp - 24]
+        mov r12, [rbp - 16]
+        mov rbx, [rbp - 8]
+
+        mov rsp, rbp
+        pop rbp
+        ret
+
+
+
 hash_map_show_buckets:
     ; * Expect pointer to Map in RCX.
     .set_up:
@@ -191,9 +276,6 @@ hash_map_show_buckets:
         ; * 8 bytes to keep stack 16-byte aligned.
         push rbp
         mov rbp, rsp
-        sub rsp, 32
-
-        ; Reserve 32 bytes shadow space for called functions.
         sub rsp, 32
 
         ; Save non-volatile regs.
@@ -210,6 +292,9 @@ hash_map_show_buckets:
 
         ; R13 points to the bucket list of the Map.
         mov r13, [rbx + Hash_Map.bucket_list_ptr]
+
+        ; Reserve 32 bytes shadow space for called functions.
+        sub rsp, 32
 
         ; Printing all pointers.
         .loop:
@@ -294,6 +379,8 @@ hash_map_show_entries:
         pop rbp
         ret
 
+; Checks if key exists by getting the entry for that key.
+; If _get_entry_by_key is not zero, it returns a 1. Otherwise it returns 0.
 hash_map_contains_key:
     ; * Expect pointer to map in RCX.
     ; * Expect pointer to key in RDX.
@@ -305,82 +392,20 @@ hash_map_contains_key:
         mov rbp, rsp
         sub rsp, 48
 
-        ; Save params into shadow space.
-        mov [rbp + 16], rcx
-        mov [rbp + 24], rdx
-
-        ; Save non-volatile regs.
-        mov [rbp - 8], rsi
-        mov [rbp - 16], rdi
-        mov [rbp - 24], rbx
-        mov [rbp - 32], r12
-        mov [rbp - 40], r13
-
-        ; Reserve 32 bytes shadow space for called functions.
-        sub rsp, 32
-
-    .hash_key:
-        mov rcx, rdx
-        call _hash
-        ; * Second local variable: hash value.
-        mov r13, rax
-
-    .get_index:
-        mov rcx, [rbp + 16]
-        mov rcx, [rcx + Hash_Map.capacity]
-        mov rdx, rax
-        call _get_index
-
-    .scan_for_key:
-        mov rbx, [rbp + 16]
-        mov rbx, [rbx + Hash_Map.bucket_list_ptr]
-        mov rbx, [rbx + rax * 8]
-        test rbx, rbx
-        jz .key_not_found
-
-    .scan_for_hash_loop:
-        mov r12, [rbx + Map_Entry.hash]
-        cmp r12, r13
-        je .compare_keys
-
-    .scan_for_hash_loop_handle:
-        mov rbx, [rbx + Map_Entry.next_entry_ptr]
-        test rbx, rbx
-        jnz .scan_for_hash_loop
-
-    .key_not_found:
-        xor rax, rax
-        jmp .complete
-
-    .compare_keys:
-        mov rsi, [rbp + 24]
-        mov rdi, [rbx + Map_Entry.key]
-
-        .comparison_loop:
-            mov al, [rsi]
-            cmp al, [rdi]
-            jne .key_not_found
-        .comparison_loop_handle:
-            inc rsi
-            inc rdi
-            test al, al
-            jnz .comparison_loop
-
-    .key_found:
-        mov rax, 1
+    .get_entry_by_key:
+        call _get_entry_by_key
+        test rax, rax
+        setnz al
+        movzx rax, al
 
     .complete:
-        ; Restore non-volatile regs.
-        mov r13, [rbp - 40]
-        mov r12, [rbp - 32]
-        mov rbx, [rbp - 24]
-        mov rdi, [rbp - 16]
-        mov rsi, [rbp - 8]
-    
         ; Restore old stack frame and return to caller.
         mov rsp, rbp
         pop rbp
         ret
+
+
+;;;;;; PRIVATE FUNCTIONS ;;;;;;
 
 ; Hash key with djb2 (Dan Bernstein) algorithm.
 _hash:
@@ -508,20 +533,13 @@ _get_entry_by_key:
         jmp .complete
 
     .compare_keys:
-        mov rsi, [rbp + 24]
-        mov rdi, [rbx + Map_Entry.key]
+        mov rcx, [rbp + 24]
+        mov rdx, [rbx + Map_Entry.key]
+        call _compare_keys
+        test rax, rax
+        jz .scan_for_hash_loop_handle
 
-        .comparison_loop:
-            mov al, [rsi]
-            cmp al, [rdi]
-            jne .key_not_found
-        .comparison_loop_handle:
-            inc rsi
-            inc rdi
-            test al, al
-            jnz .comparison_loop
-
-    .key_found:
+    .save_entry_pointer:
         mov rax, rbx
 
     .complete:
@@ -535,6 +553,30 @@ _get_entry_by_key:
         ; Restore old stack frame and return to caller.
         mov rsp, rbp
         pop rbp
+        ret
+
+_compare_keys:
+    ; * Expect pointer to first key in RCX.
+    ; * Expect pointer to second key in RDX.
+    .comparison_loop:
+        mov al, [rcx]
+        cmp al, [rdx]
+        jne .key_not_found
+
+    .comparison_loop_handle:
+        inc rcx
+        inc rdx
+        test al, al
+        jnz .comparison_loop
+    
+    .key_equal:
+        mov rax, 1
+        jmp .complete
+
+    .key_not_found:
+        xor rax, rax
+
+    .complete:
         ret
 
 _rehash:
@@ -637,21 +679,21 @@ _rehash:
 
 _check_load_factor:
     ; * Expect pointer to Map in RCX.
-    mov rdx, [rcx + Hash_Map.capacity]
-    imul rdx, 3
+        mov rdx, [rcx + Hash_Map.capacity]
+        imul rdx, 3
 
-    mov rax, [rcx + Hash_Map.entries_count]
-    shl rax, 2
+        mov rax, [rcx + Hash_Map.entries_count]
+        shl rax, 2
 
-    cmp rax, rdx
-    jb .lower
+        cmp rax, rdx
+        jb .lower
 
     .bigger:
-    mov rax, 1
-    jmp .complete
+        mov rax, 1
+        jmp .complete
 
     .lower:
-    xor rax, rax
+        xor rax, rax
 
     .complete:
     ret

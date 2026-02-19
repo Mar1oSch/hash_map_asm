@@ -8,6 +8,7 @@ section .data
     key3 db "Key3", 0
     key4 db "Key1.1", 0
     key5 db "Key2.1", 0
+    unused_key db "Unused_Key", 0
 
     value1 db "Value1", 0
     value1_2 db "Value1.2", 0
@@ -17,7 +18,7 @@ section .data
     value5 db "Value5", 0
 
 section .text
-    extern hash_map_static_vtable, HASH_MAP_CONSTRUCTOR_OFFSET, HASH_MAP_ADD_ENTRY_OFFSET, HASH_MAP_SHOW_BUCKETS_OFFSET, HASH_MAP_SHOW_ENTRIES_OFFSET, HASH_MAP_CONTAINS_KEY_OFFSET
+    extern hash_map_static_vtable, HASH_MAP_CONSTRUCTOR_OFFSET, HASH_MAP_ADD_ENTRY_OFFSET, HASH_MAP_REMOVE_ENTRY_OFFSET,HASH_MAP_SHOW_BUCKETS_OFFSET, HASH_MAP_SHOW_ENTRIES_OFFSET, HASH_MAP_CONTAINS_KEY_OFFSET
 
 main:
     push rbp
@@ -110,6 +111,20 @@ main:
     mov r9, [rcx + Hash_Map.public_methods_vtable_ptr]
     call [r9 + HASH_MAP_SHOW_ENTRIES_OFFSET]
 
+    mov rcx, [rbp - 8]
+    lea rdx, [rel key4]
+    mov r9, [rcx + Hash_Map.public_methods_vtable_ptr]
+    call [r9 + HASH_MAP_REMOVE_ENTRY_OFFSET]
+
+    mov rcx, [rbp - 8]
+    mov r9, [rcx + Hash_Map.public_methods_vtable_ptr]
+    call [r9 + HASH_MAP_SHOW_ENTRIES_OFFSET]
+
+    mov rcx, [rbp - 8]
+    lea rdx, [rel unused_key]
+    mov r9, [rcx + Hash_Map.public_methods_vtable_ptr]
+    call [r9 + HASH_MAP_REMOVE_ENTRY_OFFSET]
+    
     mov rsp, rbp
     pop rbp
     ret
