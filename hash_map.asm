@@ -219,23 +219,25 @@ hash_map_remove_entry:
         mov rdx, rax
         call _get_index
 
-    .set_up_search_loop:
+    .set_up_search_for_key_loop:
         mov r13, [rbx + Hash_Map.bucket_list_ptr]
         lea r13, [r13 + 8 * rax]
 
-    .search_loop:
+    .search_for_key_loop:
         mov r15, [r13]
         test r15, r15
         jz .not_found
 
+    .compare_hash_Values:
         cmp [r15 + Map_Entry.hash], r14
-        jne .search_loop_handle
+        jne .search_for_key_loop_handle
 
+    .compare_keys:
         mov rcx, [r15 + Map_Entry.key]
         mov rdx, r12
         call _compare_keys
         test rax, rax
-        jz .search_loop_handle
+        jz .search_for_key_loop_handle
 
     .remove_entry:
         mov rax, [r15 + Map_Entry.next_entry_ptr]
@@ -247,9 +249,9 @@ hash_map_remove_entry:
         mov rax, 1
         jmp .complete
 
-    .search_loop_handle:
+    .search_for_key_loop_handle:
         lea r13, [r15 + Map_Entry.next_entry_ptr]
-        jmp .search_loop
+        jmp .search_for_key_loop
 
     .not_found:
         xor rax, rax
@@ -511,33 +513,33 @@ _get_entry_by_key:
         mov rdx, rax
         call _get_index
 
-    .scan_for_key:
+    .set_up_search_for_key_loop:
         mov rbx, [rbp + 16]
         mov rbx, [rbx + Hash_Map.bucket_list_ptr]
         mov rbx, [rbx + rax * 8]
         test rbx, rbx
         jz .key_not_found
 
-    .scan_for_hash_loop:
+    .compare_hash_value:
         mov r12, [rbx + Map_Entry.hash]
         cmp r12, r13
-        je .compare_keys
-
-    .scan_for_hash_loop_handle:
-        mov rbx, [rbx + Map_Entry.next_entry_ptr]
-        test rbx, rbx
-        jnz .scan_for_hash_loop
-
-    .key_not_found:
-        xor rax, rax
-        jmp .complete
+        jne .search_for_key_loop_handle
 
     .compare_keys:
         mov rcx, [rbp + 24]
         mov rdx, [rbx + Map_Entry.key]
         call _compare_keys
         test rax, rax
-        jz .scan_for_hash_loop_handle
+        jnz .save_entry_pointer
+
+    .search_for_key_loop_handle:
+        mov rbx, [rbx + Map_Entry.next_entry_ptr]
+        test rbx, rbx
+        jnz .compare_hash_value
+
+    .key_not_found:
+        xor rax, rax
+        jmp .complete
 
     .save_entry_pointer:
         mov rax, rbx
@@ -561,7 +563,7 @@ _compare_keys:
     .comparison_loop:
         mov al, [rcx]
         cmp al, [rdx]
-        jne .key_not_found
+        jne .key_not_equal
 
     .comparison_loop_handle:
         inc rcx
@@ -573,7 +575,7 @@ _compare_keys:
         mov rax, 1
         jmp .complete
 
-    .key_not_found:
+    .key_not_equal:
         xor rax, rax
 
     .complete:
